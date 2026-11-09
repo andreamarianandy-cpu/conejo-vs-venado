@@ -10,37 +10,40 @@ window.addEventListener('resize', () => {
   canvas.height = window.innerHeight;
 });
 
-// Variable para controlar el estado de conexión
 let conectado = false;
 
 socket.on('connect', () => {
-  console.log('¡Conectado con éxito al servidor!', socket.id);
+  console.log('¡Conectado al servidor de Render!', socket.id);
   conectado = true;
 });
 
 socket.on('disconnect', () => {
-  console.log('Desconectado del servidor.');
   conectado = false;
 });
 
-// Bucle principal del juego
+// Bucle principal de renderizado
 function gameLoop() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  // Dibujar fondo nevado básico
+  // Fondo nevado
   ctx.fillStyle = '#f0f9ff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.fillStyle = '#0f172a';
-  ctx.font = '24px sans-serif';
-  ctx.textAlign = 'center';
-
   if (!conectado) {
-    // Si aún se está conectando
-    ctx.fillText('Conejos vs Venados - Conectando al servidor...', canvas.width / 2, canvas.height / 2);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '24px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Conectando al servidor...', canvas.width / 2, canvas.height / 2);
   } else {
-    // Una vez conectado con éxito
-    ctx.fillText('¡Conectado! Listo para jugar (Sala / Menú)', canvas.width / 2, canvas.height / 2);
+    // Aquí puedes empezar a dibujar tu juego, avatares o interfaz de salas
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '32px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Conejos vs Venados', canvas.width / 2, canvas.height / 2 - 40);
+    
+    ctx.font = '18px sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.fillText('¡Conexión establecida! Diseña tu menú o lógica de juego aquí.', canvas.width / 2, canvas.height / 2 + 10);
   }
 
   requestAnimationFrame(gameLoop);
