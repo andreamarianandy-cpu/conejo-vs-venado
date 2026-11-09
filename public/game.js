@@ -41,7 +41,6 @@ function gameLoop() {
   } else {
     // Una vez conectado con éxito
     ctx.fillText('¡Conectado! Listo para jugar (Sala / Menú)', canvas.width / 2, canvas.height / 2);
-    // Aquí más adelante puedes pintar a tus conejos, venados y elementos del juego
   }
 
   requestAnimationFrame(gameLoop);
