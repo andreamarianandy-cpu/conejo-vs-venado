@@ -1,24 +1,11 @@
-const MAX_JUGADORES = 59; // Límite estricto en el servidor
-const TIEMPO_RECONEXION = 60; // Segundos de reserva de lugar
-const ENERGIA_POR_TRIANGULO = 21; // Segundos por triángulo
-
 class RoomManager {
   constructor(io) {
     this.io = io;
     this.rooms = new Map();
-    this.ipAttempts = new Map();
   }
 
   generateCode() {
-    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-    let code = '';
-    do {
-      code = '';
-      for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-    } while (this.rooms.has(code));
-    return code;
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
   }
 
   handleCreate(socket, mode, nickname, ip) {
@@ -26,74 +13,90 @@ class RoomManager {
     const room = {
       code,
       mode,
-      hostId: socket.id,
-      players: new Map(),
-      started: false,
-      flagPosition: { x: 0, y: -2500 },
-      triangles: []
+      players: {},
+      flag: { x: 400, y: 300 },
+      interval: null
     };
+
     this.rooms.set(code, room);
-    this.handleJoin(socket, code, nickname, null, ip);
+    this.joinRoom(socket, room, nickname, 'conejos');
+    this.startRoomLoop(room);
   }
 
-  handleJoin(socket, code, nickname, token, ip) {
-    const attempts = this.ipAttempts.get(ip) || 0;
-    if (attempts > 10) {
-      return socket.emit('error_msg', 'Demasiados intentos fallidos. Intenta más tarde.');
-    }
-
-    const room = this.rooms.get(code);
+  handleJoin(socket, code, nickname, reconnectToken, ip) {
+    const room = this.rooms.get(code?.toUpperCase());
     if (!room) {
-      this.ipAttempts.set(ip, attempts + 1);
-      return socket.emit('error_msg', 'Sala no encontrada.');
+      socket.emit('error_message', 'La sala no existe.');
+      return;
     }
 
-    if (room.players.size >= MAX_JUGADORES) {
-      return socket.emit('error_msg', 'Sala llena (máximo 59 jugadores).');
-    }
+    // Alternar equipo entre conejos y venados según la cantidad de jugadores
+    const count = Object.keys(room.players).length;
+    const team = count % 2 === 0 ? 'conejos' : 'venados';
 
-    if (room.started && !token) {
-      return socket.emit('error_msg', 'La partida ya empezó.');
-    }
+    this.joinRoom(socket, room, nickname, team);
+  }
 
-    socket.join(code);
-    const team = room.players.size % 2 === 0 ? 'blue' : 'red';
-    const playerToken = token || Math.random().toString(36).substring(2);
-
-    const player = {
+  joinRoom(socket, room, nickname, team) {
+    socket.join(room.code);
+    
+    // Crear datos del jugador
+    room.players[socket.id] = {
       id: socket.id,
       nickname: nickname || 'Jugador',
-      team,
-      x: team === 'blue' ? -400 : 400,
-      y: 0,
-      energy: ENERGIA_POR_TRIANGULO,
-      token: playerToken,
-      reconnecting: false
+      team: team, // 'conejos' o 'venados'
+      x: Math.floor(Math.random() * 500) + 100,
+      y: Math.floor(Math.random() * 400) + 100,
+      radius: 20,
+      speed: 5,
+      keys: { up: false, down: false, left: false, right: false }
     };
 
-    room.players.set(socket.id, player);
-    socket.emit('joined_room', { code, token: playerToken, player });
-    this.io.to(code).emit('room_update', Array.from(room.players.values()));
+    socket.emit('room_joined', { code: room.code, playerId: socket.id });
+  }
+
+  handleInput(socketId, inputData) {
+    for (const room of this.rooms.values()) {
+      if (room.players[socketId]) {
+        room.players[socketId].keys = inputData;
+        break;
+      }
+    }
   }
 
   handleDisconnect(socketId) {
-    this.rooms.forEach((room, code) => {
-      if (room.players.has(socketId)) {
-        const player = room.players.get(socketId);
-        player.reconnecting = true;
-        this.io.to(code).emit('player_reconnecting', { id: socketId });
-
-        setTimeout(() => {
-          if (player.reconnecting) {
-            room.players.delete(socketId);
-            if (room.hostId === socketId && room.players.size > 0) {
-              room.hostId = room.players.keys().next().value;
-            }
-            this.io.to(code).emit('room_update', Array.from(room.players.values()));
-          }
-        }, TIEMPO_RECONEXION * 1000);
+    for (const [code, room] of this.rooms.entries()) {
+      if (room.players[socketId]) {
+        delete room.players[socketId];
+        
+        // Si la sala queda vacía, se destruye
+        if (Object.keys(room.players).length === 0) {
+          clearInterval(room.interval);
+          this.rooms.delete(code);
+        }
+        break;
       }
-    });
+    }
+  }
+
+  startRoomLoop(room) {
+    if (room.interval) return;
+
+    // Actualización de física a 60 FPS
+    room.interval = setInterval(() => {
+      Object.values(room.players).forEach(player => {
+        if (player.keys.up) player.y -= player.speed;
+        if (player.keys.down) player.y += player.speed;
+        if (player.keys.left) player.x -= player.speed;
+        if (player.keys.right) player.x += player.speed;
+      });
+
+      // Emitir el estado actualizado de la partida a la sala
+      this.io.to(room.code).emit('game_update', {
+        players: room.players,
+        flag: room.flag
+      });
+    }, 1000 / 60);
   }
 }
 
